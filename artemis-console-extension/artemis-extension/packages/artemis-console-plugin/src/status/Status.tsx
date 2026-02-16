@@ -39,7 +39,15 @@ import {
     MenuToggleElement,
     PageSection,
     Spinner,
-    Tooltip
+    Tooltip,
+    ChipGroup,
+    Chip,
+    Toolbar,
+    ToolbarItem,
+    SelectList,
+    SelectOption,
+    Select,
+    Badge
 } from "@patternfly/react-core"
 import { EllipsisVIcon } from '@patternfly/react-icons/dist/esm/icons/ellipsis-v-icon'
 import { ExclamationCircleIcon } from '@patternfly/react-icons/dist/esm/icons/exclamation-circle-icon'
@@ -49,10 +57,13 @@ import React, { ReactNode, useContext, useEffect, useState } from "react";
 import { Acceptors, artemisService, BrokerInfo, BrokerState, ClusterConnections } from "../artemis-service";
 import { ArtemisContext } from "../context";
 import { Table, Tbody, Td, Th, Thead, Tr } from "@patternfly/react-table";
-import { LockedIcon } from '@patternfly/react-icons'
+import { CheckCircleIcon, ExclamationTriangleIcon, LockedIcon } from '@patternfly/react-icons'
+import { useSearchParams } from "react-router-dom"
+import { Filter, ArtemisFilters, getFilterOpSymbol, QuickFilter, QUICK_FILTERS_KEY } from "../util/filter-util"
 
 export const Status: React.FunctionComponent = () => {
 
+    const [searchParams, setSearchParams] = useSearchParams();
     const [brokerState, setBrokerState] = useState<BrokerState>({ loaded: false, accessible: false, message: "Loading..." })
     const [brokerInfo, setBrokerInfo] = useState<BrokerInfo>()
     const [acceptors, setAcceptors] = useState<Acceptors>();
@@ -61,6 +72,17 @@ export const Status: React.FunctionComponent = () => {
 
     const [showAttributesDialog, setShowAttributesDialog] = useState(false);
     const [showOperationsDialog, setShowOperationsDialog] = useState(false);
+
+    const [filterSelections, setFilterSelections] = useState(["Connections", "Sessions", "Producers", "Consumers", "Addresses", "Queues"]);
+
+    const [ quickFilters, setQuickFilters ] = useState<QuickFilter[]>(() => {
+      const storedQuickFilters = localStorage.getItem(QUICK_FILTERS_KEY);
+        if (storedQuickFilters) {
+          return JSON.parse(storedQuickFilters) as QuickFilter[];
+        }
+        return []; 
+      });
+
 
     const getBrokerInfo = async () => {
         artemisService.getBrokerInfo()
@@ -229,6 +251,54 @@ export const Status: React.FunctionComponent = () => {
                     </Card>
                 </GridItem>
             </Grid>
+            <ExpandableSection toggleTextExpanded="Quick Filters" toggleTextCollapsed="Quick Filters">
+            <Grid hasGutter>
+                
+                 <GridItem span={12} rowSpan={3}>
+                    <Card isFullHeight={true} >
+                        <CardHeader>
+                            <Toolbar>
+                                <ToolbarItem>
+                                    <Button>Create</Button>
+                                </ToolbarItem>
+                            </Toolbar>
+                        </CardHeader>
+                        <CardBody>
+                            <Divider />
+                            <Table variant="compact">
+                                <Thead>
+                                    <Tr>
+                                    <Th>Name</Th>
+                                    <Th>View</Th>
+                                    <Th>filter</Th>
+                                    <Th>Sort Column</Th>
+                                    <Th>Sort Order</Th>
+                                    <Th>Actions</Th>
+                                    </Tr>
+                                </Thead>
+                                <Tbody>
+                                    {quickFilters.map((metricsFilter) => 
+                                    <Tr>
+                                        <Td>{metricsFilter.name}</Td>
+                                        <Td>{metricsFilter.view}</Td>
+                                        <Td>
+                                            <ChipGroup>
+                                                {metricsFilter.artemisFilter.searchFilters.map((filter) => 
+                                                    <Chip isReadOnly>{filter.field + getFilterOpSymbol(filter.operation) + filter.value}</Chip>
+                                                )}
+                                            </ChipGroup>
+                                        </Td>
+                                        <Td>{metricsFilter.artemisFilter.sortColumn}</Td>
+                                        <Td>{metricsFilter.artemisFilter.sortOrder}</Td>
+                                        <Td><Button onClick={() => setSearchParams({ tab: String(metricsFilter.view), artemisFilters: JSON.stringify(metricsFilter.artemisFilter) }, { replace: false })}>view</Button>{' '}<Button>edit</Button>{' '}<Button>delete</Button></Td>
+                                    </Tr>)}
+                                </Tbody>
+                            </Table>
+                        </CardBody>
+                    </Card>
+                </GridItem>
+            </Grid>
+            </ExpandableSection>
             <ExpandableSection toggleTextExpanded="Acceptors" toggleTextCollapsed="Acceptors">
                 <Grid hasGutter span={4}>
                     {

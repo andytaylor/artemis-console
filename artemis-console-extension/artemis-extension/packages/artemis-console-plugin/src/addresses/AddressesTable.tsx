@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import React, { useContext, useState } from 'react'
-import { ActiveSort, ArtemisTable, Column, Filter, ToolbarAction } from '../table/ArtemisTable';
+import { ActiveSort, ArtemisTable, Column, ToolbarAction } from '../table/ArtemisTable';
 import { Navigate } from '../views/ArtemisTabView.js';
 import { artemisService } from '../artemis-service';
 import { IAction } from '@patternfly/react-table';
@@ -29,6 +29,7 @@ import { SendMessage } from '../messages/SendMessage';
 import { createAddressObjectName } from '../util/jmx';
 import { useNavigate } from 'react-router-dom';
 import { columnStorage } from '../artemis-preferences-service';
+import { ArtemisFilters, Filter } from '../util/filter-util';
 
 export const AddressesTable: React.FunctionComponent<Navigate> = (navigate) => {
   const getQueueFilter = (row: any) => {
@@ -72,6 +73,16 @@ export const AddressesTable: React.FunctionComponent<Navigate> = (navigate) => {
     const data = JSON.parse(response);
     return data;
   }
+
+
+    const listAddressesFiltered = async (page: number, perPage: number, artemisFilters: ArtemisFilters): Promise<any> => {
+      const response = await artemisService.getAddressesFiltered(page, perPage, artemisFilters).catch(error => {
+        eventService.notify({ type: 'warning', message: jolokiaService.errorMessage(error)})
+        return JSON.stringify({ data: [], count: 0 })
+      })
+      const data = JSON.parse(response);
+      return data;
+    }
 
   const { tree, selectedNode, brokerNode, setSelectedNode, findAndSelectNode } = useContext(ArtemisContext);
   const routenavigate = useNavigate();
@@ -190,7 +201,7 @@ export const AddressesTable: React.FunctionComponent<Navigate> = (navigate) => {
 
   return (
     <ArtemisContext.Provider value={{ tree, selectedNode, brokerNode, setSelectedNode, findAndSelectNode }}>
-      <ArtemisTable getRowActions={getRowActions} allColumns={allColumns} getData={listAddresses} loadData={loadData} storageColumnLocation={columnStorage.addresses}  toolbarActions={[createAction]} navigate={navigate.search} filter={navigate.filter}/>
+      <ArtemisTable getRowActions={getRowActions} allColumns={allColumns} getData={listAddresses} getDataFiltered={listAddressesFiltered} loadData={loadData} storageColumnLocation={columnStorage.addresses}  toolbarActions={[createAction]} navigate={navigate.search} filter={navigate.filter}/>
       <Modal
         aria-label='create-queue-modal'
         variant={ModalVariant.medium}

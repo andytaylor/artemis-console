@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   Button,
   DataList,
@@ -31,7 +31,10 @@ import {
   Pagination,
   PaginationVariant,
   Text,
-  TextContent
+  TextContent,
+  Chip,
+  ChipGroup,
+  Label
 } from '@patternfly/react-core';
 import { SortAmountDownIcon } from '@patternfly/react-icons/dist/esm/icons/sort-amount-down-icon';
 import { Thead, Tr, Th, Tbody, Td, IAction, ActionsColumn, Table, InnerScrollContainer } from '@patternfly/react-table';
@@ -47,6 +50,7 @@ import {
 import { ArtemisFilters } from './ArtemisFilters';
 import {Simulate} from "react-dom/test-utils";
 import loadedData = Simulate.loadedData;
+import { ArtemisFilters as TheArtemisFilters, EMPTY_FILTER, Filter, getFilterOpSymbol  } from '../util/filter-util';
 
 export type Column = {
   id: string
@@ -69,12 +73,6 @@ export type ActiveSort = {
   order: SortDirection
 }
 
-export type Filter = {
-  column: string
-  operation: string
-  input: string
-}
-
 export type ToolbarAction = {
   name: string
   action: Function
@@ -83,12 +81,14 @@ export type ToolbarAction = {
 export type TableData = {
   allColumns: Column[],
   getData: Function,
+  getDataFiltered?: Function,
   getRowActions?: Function,
   toolbarActions?: ToolbarAction[],
   loadData?: number,
   storageColumnLocation?: string
   navigate?: Function
   filter?: Filter
+  showDetail?: Function
 }
 
 export const ArtemisTable: React.FunctionComponent<TableData> = broker => {
@@ -110,11 +110,11 @@ const operationOptions = [
       order: SortDirection.ASCENDING
     };
   }
-
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([])
   const [resultsSize, setresultsSize] = useState(0)
   const [columnsLoaded, setColumnsLoaded] = useState(false);
-
+  
   const [columns, setColumns] = useState(broker.allColumns);
   const [activeSort, setActiveSort] = useState(initialActiveSort);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
@@ -150,7 +150,26 @@ const operationOptions = [
 
   const [filter, setFilter] = useState(() => broker.filter !== undefined ? broker.filter : initialFilter());
 
+  const initialArtemisFilters = () => {
+    const activeArtemisFilters = searchParams.get('artemisFilters') || undefined;
+    if(activeArtemisFilters) {
+      const artemisFilters: TheArtemisFilters = JSON.parse(activeArtemisFilters);
+      return artemisFilters;
+    }
+    const filter: TheArtemisFilters = EMPTY_FILTER;
+    filter.sortColumn = activeSort.id;
+    filter.sortOrder = activeSort.order;;
+    return filter;
+  }
+  const [artemisFilters, setArtemisFilters] = useState(initialArtemisFilters);
+
   const listData = async () => {
+    if(broker.getDataFiltered) {
+      const data = await broker.getDataFiltered(page, perPage, artemisFilters);
+      setRows(data.data);
+      setresultsSize(data.count);
+      return;
+    }
     const data = await broker.getData(page, perPage, activeSort, filter);
     setRows(data.data);
     setresultsSize(data.count);
@@ -169,7 +188,7 @@ const operationOptions = [
 
   useEffect(() => {
     listData();
-  }, [page, perPage, activeSort, filter, broker.loadData]);
+  }, [page, perPage, activeSort, filter, artemisFilters, broker.loadData]);
 
   const handleModalToggle = () => {
     setIsModalOpen(!isModalOpen);
@@ -212,7 +231,13 @@ const operationOptions = [
       id: id,
       order: order
     };
-    setActiveSort(updatedActiveSort)
+    const filter: TheArtemisFilters = {
+      searchFilters: [...artemisFilters.searchFilters],
+      sortOrder: updatedActiveSort.order,
+      sortColumn: updatedActiveSort.id
+    }
+    setArtemisFilters(filter);
+    setActiveSort(updatedActiveSort);
     sessionStorage.setItem(broker.storageColumnLocation + ".activesort",JSON.stringify(updatedActiveSort));
   }
 
@@ -264,6 +289,30 @@ const operationOptions = [
     { title: '100 per page', value: 100 },
     { title: 'All items', value: -1 },
   ];
+
+  const deleteArtemisFilter = (id: string) => {
+      const copyOfFilters = [...artemisFilters.searchFilters];
+      const filteredCopy = copyOfFilters.filter((artemisFilter: Filter) => artemisFilter.field + artemisFilter.operation + artemisFilter.value !== id);
+      const newArtemisFilters: TheArtemisFilters = {
+        searchFilters: filteredCopy,
+        sortOrder: artemisFilters.sortOrder,
+        sortColumn: artemisFilters.sortColumn
+      };
+      setArtemisFilters(newArtemisFilters);
+    };
+
+  const clearArtemisFilter = () => {
+      const newArtemisFilters: TheArtemisFilters = {
+        searchFilters: [],
+        sortOrder: '',
+        sortColumn: ''
+      };
+      setArtemisFilters(newArtemisFilters);
+    };
+
+    const hasSearchFilters = () => {
+      return artemisFilters.searchFilters.length > 0;
+    }
 
   const renderPagination = (variant: PaginationVariant | undefined) => (
     <Pagination
@@ -393,14 +442,18 @@ const operationOptions = [
             columns={columns}
             operationOptions={operationOptions}
             initialFilter={filter}
+            artemisFilters={artemisFilters}
             onApplyFilter={(f) => {
               setPage(1);
               setFilter(f);
               if (broker.storageColumnLocation) {
                 sessionStorage.setItem(broker.storageColumnLocation + '.filter', JSON.stringify(f));
               }
-            }}
-          />
+            } } 
+            onApplyFilters={function (filters: TheArtemisFilters) {
+                  setPage(1);
+                  setArtemisFilters(filters);
+            } }/>
 
           <ToolbarItem key="column-select">
             <Button variant='link' onClick={handleModalToggle}>Manage Columns</Button>
@@ -411,6 +464,25 @@ const operationOptions = [
                 <Button variant='link' onClick={() => action.action()}>{action.name}</Button>
               </ToolbarItem>))
           }
+        </ToolbarContent>
+      </Toolbar>
+      <Toolbar>
+        <ToolbarContent>
+          <ToolbarItem>
+              {artemisFilters.searchFilters.map((filter) => (
+                <><Label onClose={() => deleteArtemisFilter(filter.field + filter.operation + filter.value)}>{filter.field + getFilterOpSymbol(filter.operation) + filter.value}</Label>{' '}</>
+              ))}
+        </ToolbarItem>
+        {hasSearchFilters() && 
+          <ToolbarItem>
+            <Button variant='link' onClick={() => clearArtemisFilter()}>Clear all Filters</Button>
+          </ToolbarItem>
+        }
+        {hasSearchFilters() && 
+          <ToolbarItem>
+            <Button variant='primary'>Save</Button>
+          </ToolbarItem>
+        }
         </ToolbarContent>
       </Toolbar>
 
