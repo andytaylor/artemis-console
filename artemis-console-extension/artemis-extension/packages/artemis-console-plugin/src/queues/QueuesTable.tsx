@@ -15,8 +15,10 @@
  * limitations under the License.
  */
 import React, { useContext, useState } from 'react'
-import { ActiveSort, ArtemisTable, Column, Filter } from '../table/ArtemisTable';
+import { ActiveSort, ArtemisTable, Column } from '../table/ArtemisTable';
 import { artemisService } from '../artemis-service';
+import { TableFilters, Filter } from '../util/filter-util';
+
 import { IAction } from '@patternfly/react-table';
 import { Button, Modal, ModalVariant } from '@patternfly/react-core';
 import { SendMessage } from '../messages/SendMessage';
@@ -95,6 +97,15 @@ export const QueuesTable: React.FunctionComponent<QueueNavigate> = navigate => {
 
   const listQueues = async (page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<any> => {
     const response = await artemisService.getQueues(page, perPage, activeSort, filter).catch(error => {
+      eventService.notify({ type: 'warning', message: jolokiaService.errorMessage(error)})
+      return JSON.stringify({ data: [], count: 0 })
+    })
+    const data = JSON.parse(response);
+    return data;
+  }
+
+  const listQueuesFiltered = async (page: number, perPage: number, artemisFilters: TableFilters): Promise<any> => {
+    const response = await artemisService.getQueuesFiltered(page, perPage, artemisFilters).catch(error => {
       eventService.notify({ type: 'warning', message: jolokiaService.errorMessage(error)})
       return JSON.stringify({ data: [], count: 0 })
     })
@@ -276,7 +287,7 @@ export const QueuesTable: React.FunctionComponent<QueueNavigate> = navigate => {
   };
 
   return (
-    <><ArtemisTable allColumns={allColumns} getData={listQueues} getRowActions={getRowActions} loadData={loadData} storageColumnLocation={columnStorage.queues} navigate={navigate.search} filter={navigate.filter} /><Modal
+    <><ArtemisTable allColumns={allColumns} getData={listQueues} getDataFiltered={listQueuesFiltered} getRowActions={getRowActions} loadData={loadData} storageColumnLocation={columnStorage.queues} navigate={navigate.search} filter={navigate.filter} /><Modal
       aria-label='queue-delete-modal'
       variant={ModalVariant.medium}
       title="Delete Queue?"

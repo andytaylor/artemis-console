@@ -20,6 +20,7 @@ import help from './help.md'
 import { artemisService } from './artemis-service'
 import { configManager } from './config-manager'
 import { artemisTreeProcessor } from './artemis-tree-processor'
+import { ArtemisTableFilters } from './ArtemisTableFilters'
 
 /**
  * Main entry point to Artemis Console Extension called during application bootstrap (`bootstrap.tsx`) before
@@ -51,6 +52,7 @@ export const artemis: HawtioPlugin = () => {
   hawtio.addDeferredPlugin('artemis-plugins', async () => {
     return import('./plugin-ui').then(m => {
       preferencesRegistry.add(artemisPluginName, artemisPluginTitle, m.ArtemisPreferences, 1)
+      preferencesRegistry.add("Filters", "Filters", ArtemisTableFilters, 2);
 
       treeProcessorRegistry.add('artemis', artemisTreeProcessor)
 

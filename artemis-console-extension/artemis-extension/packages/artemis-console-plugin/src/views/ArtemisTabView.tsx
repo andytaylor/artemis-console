@@ -23,10 +23,11 @@ import { SessionsTable } from '../sessions/SessionsTable';
 import { AddressesTable } from '../addresses/AddressesTable';
 import { ArtemisContext, useArtemisTree } from '../context';
 import { Status } from '../status/Status';
-import { Filter } from '../table/ArtemisTable';
 import { QueuesView } from '../queues/QueuesView';
 import { BrokerDiagram } from '../brokers/BrokerDiagram';
 import { artemisService } from '../artemis-service';
+import { useSearchParams } from 'react-router-dom';
+import { Filter } from '../util/filter-util';
 
 
 export type Broker = {
@@ -41,19 +42,21 @@ export type Navigate = {
 export const ArtemisTabs: React.FunctionComponent = () => {
 
   const { tree, selectedNode, brokerNode, setSelectedNode, findAndSelectNode } = useArtemisTree();
-  const [activeTabKey, setActiveTabKey] = useState<string | number>(0);
-  const[searchFilter, setSearchFilter] = useState<Filter | undefined>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchFilter, setSearchFilter] = useState<Filter | undefined>();
+
+  const activeTabKey = searchParams.get('tab') || 'status';
 
 
   const handleTabClick = (event: React.MouseEvent<any> | React.KeyboardEvent | MouseEvent, tabIndex: string | number
   ) => {
     setSearchFilter(undefined);
-    setActiveTabKey(tabIndex);
+    setSearchParams({ tab: String(tabIndex) }, { replace: false });
   };
 
   const handleSearch = (tab: number, filter: Filter) => {
-      setSearchFilter(filter);
-      setActiveTabKey(tab);
+      setSearchFilter(filter);+
+      setSearchParams({ tab: String(tab) }, { replace: false });
   };
 
   useEffect(() => {
@@ -68,62 +71,62 @@ export const ArtemisTabs: React.FunctionComponent = () => {
             <Tabs activeKey={activeTabKey}
               onSelect={handleTabClick}
               aria-label="artemistabs">
-              <Tab eventKey={0} title={<TabTitleText>Status</TabTitleText>} aria-label="status">
-                {activeTabKey === 0 &&
+              <Tab eventKey={'status'} title={<TabTitleText>Status</TabTitleText>} aria-label="status">
+                {activeTabKey === 'status' &&
                   <Status/>
                 }
               </Tab>
               { artemisService.canListConnections(brokerNode) &&
-              <Tab eventKey={1} title={<TabTitleText>Connections</TabTitleText>} aria-label="connections">
-                {activeTabKey === 1 &&
+              <Tab eventKey={'connections'} title={<TabTitleText>Connections</TabTitleText>} aria-label="connections">
+                {activeTabKey === 'connections' &&
                   <ConnectionsTable search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListSessions(brokerNode) &&
-              <Tab eventKey={2} title={<TabTitleText>Sessions</TabTitleText>} aria-label="sessions">
-                {activeTabKey === 2 &&
+              <Tab eventKey={'sessions'} title={<TabTitleText>Sessions</TabTitleText>} aria-label="sessions">
+                {activeTabKey === 'sessions' &&
                   <SessionsTable search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListProducers(brokerNode) &&
-              <Tab eventKey={3} title={<TabTitleText>Producers</TabTitleText>} aria-label="producers">
-                {activeTabKey === 3 &&
+              <Tab eventKey={'producers'} title={<TabTitleText>Producers</TabTitleText>} aria-label="producers">
+                {activeTabKey === 'producers' &&
                   <ProducerTable search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListConsumers(brokerNode) &&
-              <Tab eventKey={4} title={<TabTitleText>Consumers</TabTitleText>} aria-label="consumers">
-                {activeTabKey === 4 &&
+              <Tab eventKey={'consumers'} title={<TabTitleText>Consumers</TabTitleText>} aria-label="consumers">
+                {activeTabKey === 'consumers' &&
                   <ConsumerTable search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListAddresses(brokerNode) &&
-              <Tab eventKey={5} title={<TabTitleText>Addresses</TabTitleText>} aria-label="addresses">
-                {activeTabKey === 5 &&
+              <Tab eventKey={'addresses'} title={<TabTitleText>Addresses</TabTitleText>} aria-label="addresses">
+                {activeTabKey === 'addresses' &&
                   <AddressesTable search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListQueues(brokerNode) &&
-              <Tab eventKey={6} title={<TabTitleText>Queues</TabTitleText>} aria-label="queues">
-                {activeTabKey === 6 &&
+              <Tab eventKey={'queues'} title={<TabTitleText>Queues</TabTitleText>} aria-label="queues">
+                {activeTabKey === 'queues' &&
                   <QueuesView search={handleSearch} filter={searchFilter}/>
                 }
               </Tab>
               }
               { artemisService.canListNetworkTopology(brokerNode) &&
-              <Tab eventKey={7} title={<TabTitleText>Broker Diagram</TabTitleText>} aria-label="broker-diagram">
+              <Tab eventKey={'diagram'} title={<TabTitleText>Broker Diagram</TabTitleText>} aria-label="broker-diagram">
               </Tab>
               }
           </Tabs>
         </PageSection>
         <PageSection padding={{ default: 'noPadding' }}>
-            <TabContent key={7} eventKey={7} id={`tabContent${7}`} activeKey={activeTabKey} hidden={7 !== activeTabKey}  style={{height: "100%"}}>
-            {activeTabKey === 7 && 
+            <TabContent key={'diagram'} eventKey={'diagram'} id={`tabContent${7}`} activeKey={activeTabKey} hidden={'diagram' !== activeTabKey}  style={{height: "100%"}}>
+            {activeTabKey === 'diagram' &&
               <BrokerDiagram />   
             }
             </TabContent>

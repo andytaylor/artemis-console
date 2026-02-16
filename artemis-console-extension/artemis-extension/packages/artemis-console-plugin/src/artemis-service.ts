@@ -14,12 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { ActiveSort, Filter } from './table/ArtemisTable'
+import { ActiveSort } from './table/ArtemisTable'
 import { eventService, jolokiaService, MBeanNode, parseMBeanName, workspace } from '@hawtio/react'
 import { createAddressObjectName, createQueueObjectName } from './util/jmx'
 import { log } from './globals'
 import { Message } from './messages/MessageView'
 import { configManager } from './config-manager'
+import { Filter, TableFilters } from './util/filter-util'
 
 export type BrokerState = {
     // loading attempted?
@@ -117,10 +118,37 @@ export type Queue = {
     name: string
     address: string
     routingType: string
+    messageCount: number
 }
 export type Address = {
     name: string
     queues: Queue[]
+}
+export type AddressDetails = {
+    Address: string
+    AddressLimitPercent: number
+    AddressSize: number
+    AutoCreated: boolean
+    BlockedViaManagement: boolean
+    CurrentDuplicateIdCacheSize: number
+    Id: number
+    internal: boolean
+    MaxPageReadBytes: number
+    MaxPageReadMessages: number
+    MessageCount: number
+    NumberOfBytesPerPage: number
+    NumberOfMessages: number
+    NumberOfPages: number
+    Paging: number
+    Paused: boolean
+    PrefetchPageBytes: number
+    PrefetchPageMessages: number
+    QueueCount: number
+    RetroactiveResource: boolean
+    RoutedMessageCount: number
+    RoutingTypes: string
+    Temporary: boolean
+    UnRoutedMessageCount: number
 }
 export type BrokerTopology = {
     broker: BrokerInfo
@@ -328,6 +356,62 @@ class ArtemisService {
         });
     }
 
+     async filterQueuesForAddress(address: string, filters: Filter[]): Promise<Queue[]> {
+        return new Promise<Queue[]>(async (resolve, reject)  => {
+            const queuesAddressFilter: Filter = {
+                field: 'address',
+                operation: 'EQUALS',
+                value: address
+            };
+            const queuesFilter: Filter[] = [];
+            queuesFilter.push(queuesAddressFilter);
+            if (filters) {
+                queuesFilter.concat(filters);
+            }
+            const searchFilter: TableFilters = {
+                searchFilters:queuesFilter,
+                sortOrder: '',
+                sortColumn: ''
+            }
+            console.log(searchFilter);
+            console.log(JSON.stringify(searchFilter));
+
+            const queuesString: string = await jolokiaService.execute(await this.getBrokerObjectName(), LIST_QUEUES_SIG, [JSON.stringify(searchFilter), 1, 1000]) as string;
+            if (queuesString) {
+                console.log(queuesString);
+                const queues: Queue[] = [];
+                const returned = JSON.parse(queuesString);
+                returned.data.forEach((queue:any) => {
+                    queues.push(queue);
+                })
+                resolve(queues);
+            }
+            reject("invalid response:");
+        })
+    }
+
+    filterReplacer = (key: any, value: any): Filter =>  {
+        return value as Filter;
+    }
+
+    async getAddressDetails(addressName: string): Promise<AddressDetails> {
+        return new Promise<AddressDetails>(async (resolve, reject) => {
+            const brokerObjectName = await this.brokerObjectName;
+            const addressSearch = brokerObjectName + ",component=addresses,address=\"" + addressName + "\"";
+            const address: AddressDetails = await jolokiaService.readAttributes(addressSearch)
+            .catch((e) => {
+                reject(e)
+            }) as AddressDetails;
+            const validation = isValid(address);
+            if (validation.valid) {
+                resolve(address);
+            } else {
+                eventService.notify({ type: "warning", message: `Access not granted to ${addressName}` })
+            }
+            reject("invalid response:");
+        })
+    }
+
     async createAcceptors(): Promise<Acceptors> {
         return new Promise<Acceptors>(async (resolve, reject) => {
             const brokerObjectName = await this.brokerObjectName;
@@ -468,9 +552,9 @@ class ArtemisService {
 
     async getProducers(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const producerFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
@@ -479,9 +563,9 @@ class ArtemisService {
 
     async getConsumers(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const consumerFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
@@ -490,9 +574,9 @@ class ArtemisService {
 
     async getConnections(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const connectionsFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
@@ -501,9 +585,9 @@ class ArtemisService {
 
     async getSessions(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const sessionsFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
@@ -512,16 +596,21 @@ class ArtemisService {
 
     async getAddresses(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const addressesFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
         return await jolokiaService.execute(await this.getBrokerObjectName(), LIST_ADDRESSES_SIG, [JSON.stringify(addressesFilter), page, perPage]) as string;
     }
 
-    async getAllAddresses(addressFilter: string): Promise<string[]> {     
+
+    async getAddressesFiltered(page: number, perPage: number, artemisFilters: TableFilters): Promise<string> {
+        return await jolokiaService.execute(await this.getBrokerObjectName(), LIST_ADDRESSES_SIG, [JSON.stringify(artemisFilters), page, perPage]) as string;
+    }
+
+    async getAllAddresses(addressFilter: string): Promise<string[]> {
         return new Promise<string[]>(async (resolve, reject) => {
             const addressesString =  await jolokiaService.execute(await this.getBrokerObjectName(), LIST_ALL_ADDRESSES_SIG,  [',']).catch(error => {
                 eventService.notify({ type: "warning", message: jolokiaService.errorMessage(error) })
@@ -542,13 +631,17 @@ class ArtemisService {
 
     async getQueues(page: number, perPage: number, activeSort: ActiveSort, filter: Filter): Promise<string> {
         const queuesFilter = {
-            field: filter.input !== '' ? filter.column : '',
-            operation: filter.input !== '' ? filter.operation : '',
-            value: filter.input,
+            field: filter.value !== '' ? filter.field : '',
+            operation: filter.value !== '' ? filter.operation : '',
+            value: filter.value,
             sortOrder: activeSort.order,
             sortColumn: activeSort.id
         };
         return await jolokiaService.execute(await this.getBrokerObjectName(), LIST_QUEUES_SIG, [JSON.stringify(queuesFilter), page, perPage]) as string;
+    }
+
+    async getQueuesFiltered(page: number, perPage: number, artemisFilters: TableFilters): Promise<string> {
+        return await jolokiaService.execute(await this.getBrokerObjectName(), LIST_QUEUES_SIG, [JSON.stringify(artemisFilters), page, perPage]) as string;
     }
 
     async getQueuesForAddress(address: string): Promise<string> {

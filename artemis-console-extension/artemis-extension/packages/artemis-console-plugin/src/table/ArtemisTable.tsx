@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 import React, { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import {Link, useSearchParams } from 'react-router-dom'
 import {
   Button,
   DataList,
@@ -31,7 +31,11 @@ import {
   Pagination,
   PaginationVariant,
   Text,
-  TextContent
+  TextContent,
+  Label,
+  FormGroup,
+  TextInput,
+  Form
 } from '@patternfly/react-core';
 import { SortAmountDownIcon } from '@patternfly/react-icons/dist/esm/icons/sort-amount-down-icon';
 import { Thead, Tr, Th, Tbody, Td, IAction, ActionsColumn, Table, InnerScrollContainer } from '@patternfly/react-table';
@@ -47,6 +51,8 @@ import {
 import { ArtemisFilters } from './ArtemisFilters';
 import {Simulate} from "react-dom/test-utils";
 import loadedData = Simulate.loadedData;
+import { TableFilters, EMPTY_FILTER, Filter, getFilterOpSymbol, SavedTableFilter, SAVED_FILTERS_KEY  } from '../util/filter-util';
+import { HelpIcon } from '@patternfly/react-icons';
 
 export type Column = {
   id: string
@@ -69,12 +75,6 @@ export type ActiveSort = {
   order: SortDirection
 }
 
-export type Filter = {
-  column: string
-  operation: string
-  input: string
-}
-
 export type ToolbarAction = {
   name: string
   action: Function
@@ -83,12 +83,14 @@ export type ToolbarAction = {
 export type TableData = {
   allColumns: Column[],
   getData: Function,
+  getDataFiltered?: Function,
   getRowActions?: Function,
   toolbarActions?: ToolbarAction[],
   loadData?: number,
   storageColumnLocation?: string
   navigate?: Function
   filter?: Filter
+  showDetail?: Function
 }
 
 export const ArtemisTable: React.FunctionComponent<TableData> = broker => {
@@ -110,11 +112,12 @@ const operationOptions = [
       order: SortDirection.ASCENDING
     };
   }
-
+  const [searchParams, setSearchParams] = useSearchParams();
+  const view = searchParams.get('tab') || '';
   const [rows, setRows] = useState([])
   const [resultsSize, setresultsSize] = useState(0)
   const [columnsLoaded, setColumnsLoaded] = useState(false);
-
+  
   const [columns, setColumns] = useState(broker.allColumns);
   const [activeSort, setActiveSort] = useState(initialActiveSort);
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
@@ -150,7 +153,26 @@ const operationOptions = [
 
   const [filter, setFilter] = useState(() => broker.filter !== undefined ? broker.filter : initialFilter());
 
+  const initialTableFilters = () => {
+    const activeTableFilters = searchParams.get('artemisFilters') || undefined;
+    if(activeTableFilters) {
+      const tableFilters: TableFilters = JSON.parse(activeTableFilters);
+      return tableFilters;
+    }
+    const filter: TableFilters = EMPTY_FILTER;
+    filter.sortColumn = activeSort.id;
+    filter.sortOrder = activeSort.order;;
+    return filter;
+  }
+  const [tableFilters, setTableFilters] = useState(initialTableFilters);
+
   const listData = async () => {
+    if(broker.getDataFiltered) {
+      const data = await broker.getDataFiltered(page, perPage, tableFilters);
+      setRows(data.data);
+      setresultsSize(data.count);
+      return;
+    }
     const data = await broker.getData(page, perPage, activeSort, filter);
     setRows(data.data);
     setresultsSize(data.count);
@@ -169,7 +191,7 @@ const operationOptions = [
 
   useEffect(() => {
     listData();
-  }, [page, perPage, activeSort, filter, broker.loadData]);
+  }, [page, perPage, activeSort, filter, tableFilters, broker.loadData]);
 
   const handleModalToggle = () => {
     setIsModalOpen(!isModalOpen);
@@ -212,7 +234,13 @@ const operationOptions = [
       id: id,
       order: order
     };
-    setActiveSort(updatedActiveSort)
+    const filter: TableFilters = {
+      searchFilters: [...tableFilters.searchFilters],
+      sortOrder: updatedActiveSort.order,
+      sortColumn: updatedActiveSort.id
+    }
+    setTableFilters(filter);
+    setActiveSort(updatedActiveSort);
     sessionStorage.setItem(broker.storageColumnLocation + ".activesort",JSON.stringify(updatedActiveSort));
   }
 
@@ -264,6 +292,71 @@ const operationOptions = [
     { title: '100 per page', value: 100 },
     { title: 'All items', value: -1 },
   ];
+
+  const deleteTableFilter = (id: string) => {
+    const copyOfFilters = [...tableFilters.searchFilters];
+    const filteredCopy = copyOfFilters.filter((artemisFilter: Filter) => artemisFilter.field + artemisFilter.operation + artemisFilter.value !== id);
+    const newArtemisFilters: TableFilters = {
+      searchFilters: filteredCopy,
+      sortOrder: tableFilters.sortOrder,
+      sortColumn: tableFilters.sortColumn
+    };
+    setTableFilters(newArtemisFilters);
+  };
+
+  const clearTableFilter = () => {
+    const newTableFilters: TableFilters = {
+      searchFilters: [],
+      sortOrder: '',
+      sortColumn: ''
+    };
+    setTableFilters(newTableFilters);
+  };
+
+  const [isSaveFilterModalOpen, setIsSaveFilterModalOpen] = React.useState(false);
+
+  const handleSaveFilterModalToggle = (_event: KeyboardEvent | React.MouseEvent) => {
+    setIsSaveFilterModalOpen(!isSaveFilterModalOpen);
+  };
+
+  const [tableFilterName, setTableFilterName] = React.useState('');
+
+  const handleTableFilterNameChange = (_event: any, name: string) => {
+    setTableFilterName(name);
+  };
+
+  const initialSavedFilter: SavedTableFilter = {
+      name: "",
+      view: view,
+      tableFilters: {
+          searchFilters: [],
+          sortOrder: "",
+          sortColumn: ""
+      }
+  };
+
+  const saveTableFilters = () => {
+    console.log(tableFilters)
+    const savedTableFilter: SavedTableFilter = {
+      name: tableFilterName,
+      view: view,
+      tableFilters: tableFilters
+    }
+    const storedSavedFilters = localStorage.getItem(SAVED_FILTERS_KEY);
+    if (storedSavedFilters) {
+      const savedTableFilters: SavedTableFilter[] = JSON.parse(storedSavedFilters) as SavedTableFilter[];
+      savedTableFilters.push(savedTableFilter);
+      localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(savedTableFilters));
+    } else {
+      const savedTableFilters: SavedTableFilter[] = [savedTableFilter];
+      localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(savedTableFilters));
+    }
+    setIsSaveFilterModalOpen(false);
+  }
+
+  const hasSearchFilters = () => {
+    return tableFilters.searchFilters.length > 0;
+  }
 
   const renderPagination = (variant: PaginationVariant | undefined) => (
     <Pagination
@@ -393,14 +486,18 @@ const operationOptions = [
             columns={columns}
             operationOptions={operationOptions}
             initialFilter={filter}
+            tableFilters={tableFilters}
             onApplyFilter={(f) => {
               setPage(1);
               setFilter(f);
               if (broker.storageColumnLocation) {
                 sessionStorage.setItem(broker.storageColumnLocation + '.filter', JSON.stringify(f));
               }
-            }}
-          />
+            } } 
+            onApplyFilters={function (filters: TableFilters) {
+                  setPage(1);
+                  setTableFilters(filters);
+            } }/>
 
           <ToolbarItem key="column-select">
             <Button variant='link' onClick={handleModalToggle}>Manage Columns</Button>
@@ -411,6 +508,25 @@ const operationOptions = [
                 <Button variant='link' onClick={() => action.action()}>{action.name}</Button>
               </ToolbarItem>))
           }
+        </ToolbarContent>
+      </Toolbar>
+      <Toolbar>
+        <ToolbarContent>
+          <ToolbarItem>
+              {tableFilters.searchFilters.map((filter) => (
+                <><Label onClose={() => deleteTableFilter(filter.field + filter.operation + filter.value)}>{filter.field + getFilterOpSymbol(filter.operation) + filter.value}</Label>{' '}</>
+              ))}
+        </ToolbarItem>
+        {hasSearchFilters() && 
+          <ToolbarItem>
+            <Button variant='link' onClick={() => clearTableFilter()}>Clear all Filters</Button>
+          </ToolbarItem>
+        }
+        {hasSearchFilters() && 
+          <ToolbarItem>
+            <Button variant='primary' onClick={handleSaveFilterModalToggle}>Save</Button>
+          </ToolbarItem>
+        }
         </ToolbarContent>
       </Toolbar>
 
@@ -466,6 +582,38 @@ const operationOptions = [
       </InnerScrollContainer>
       {renderPagination(PaginationVariant.bottom)}
       {renderModal()}
+      <Modal
+        title="Save Filter"
+        isOpen={isSaveFilterModalOpen}
+        onClose={handleSaveFilterModalToggle}
+        actions={[
+          <Button key="save" variant="primary" onClick={saveTableFilters}>
+            Confirm
+          </Button>,
+          <Button key="cancel" variant="link" onClick={handleSaveFilterModalToggle}>
+            Cancel
+          </Button>
+        ]}
+        ouiaId="SaveFilter"
+      >
+        <Form>
+          <FormGroup
+          label="Filter Name"
+          isRequired
+          fieldId="simple-form-name-01"
+          >
+            <TextInput
+              isRequired
+              type="text"
+              id="simple-form-name-01"
+              name="simple-form-name-01"
+              aria-describedby="simple-form-name-01-helper"
+              value={tableFilterName}
+              onChange={handleTableFilterNameChange}
+            />
+          </FormGroup>
+        </Form>
+      </Modal>
     </React.Fragment>
   );
 };
