@@ -126,6 +126,10 @@ export const MessageView: React.FunctionComponent<MessageProps> = props => {
 
   return (
     <>
+    {props.back &&
+        <><Button id='message-view-queues-button' onClick={() => { if (props.back) { props.back(0); } } }>Queues</Button>
+        <Button id='message-view-browse-button'  onClick={() => { if (props.back) { props.back(1); } }}>Browse</Button></>
+    }
     <Title headingLevel="h4">Message ID: {currentMessage.messageID}</Title>
     <Title headingLevel="h4">Displaying Body as : {messageTextMode}</Title>
     <TextArea id="body" autoResize isDisabled value={messageBody}></TextArea>
@@ -225,10 +229,6 @@ export const MessageView: React.FunctionComponent<MessageProps> = props => {
       }
       </Tbody>
       </Table>
-    {props.back &&
-        <><Button id='message-view-queues-button' onClick={() => { if (props.back) { props.back(0); } } }>Queues</Button>
-        <Button id='message-view-browse-button'  onClick={() => { if (props.back) { props.back(1); } }}>Browse</Button></>
-    }
     </>
   )
 }
